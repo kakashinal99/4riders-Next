@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.hardware.display.DisplayManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.provider.Settings
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,6 +37,7 @@ import androidx.core.content.ContextCompat
 import com.fourriders.next.data.TripOffer
 import com.fourriders.next.scanner.OfferParser
 import com.fourriders.next.scanner.ScreenCaptureService
+import com.fourriders.next.scanner.FloatingScannerService
 import com.fourriders.next.scanner.TextScanner
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -63,6 +65,11 @@ private fun RiderHome() {
     var offer by remember { mutableStateOf(TripOffer()) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Pilih screenshot atau mula imbas skrin.") }
+    var overlayEnabled by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    val overlayPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        overlayEnabled = Settings.canDrawOverlays(context)
+        if (overlayEnabled) context.startService(Intent(context, FloatingScannerService::class.java))
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) scope.launch {
@@ -152,6 +159,24 @@ private fun RiderHome() {
                     Text(if (busy) "SCANNING…" else "SCAN CURRENT SCREEN", fontWeight = FontWeight.Black)
                 }
                 OutlinedButton(
+                    onClick = {
+                        if (Settings.canDrawOverlays(context)) {
+                            context.startService(Intent(context, FloatingScannerService::class.java))
+                            overlayEnabled = true
+                        } else {
+                            overlayPermission.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) {
+                    Icon(Icons.Default.Bolt, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (overlayEnabled) "SHOW FLOATING SCANNER" else "ENABLE FLOATING SCANNER")
+                }
+                Text("Floating scanner: ${if (overlayEnabled) "permission available" else "permission required"}. Bubble boleh dibuka di atas aplikasi lain; tekan untuk kembali ke scanner.", color = Muted, fontSize = 11.sp)
+                OutlinedButton(
                     onClick = { picker.launch("image/*") },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
@@ -165,6 +190,21 @@ private fun RiderHome() {
                 Text("Privasi: Android akan meminta kebenaran setiap kali. 4riders Next hanya mengambil satu frame dan memproses OCR pada peranti; tiada rakaman berterusan.", color = Muted, fontSize = 11.sp)
                 Text(status, color = Muted, fontSize = 12.sp)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Cyan)
+            }
+        }
+
+        if (offer.rawText.isNotBlank()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("SCAN READABILITY CHECK", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("Semakan medan yang berjaya diekstrak daripada skrin", color = Muted, fontSize = 11.sp)
+                    FieldReadStatus("Pickup address", offer.pickup)
+                    FieldReadStatus("Drop-off address", offer.dropoff)
+                    FieldReadStatus("Fare", offer.fare?.let { "RM ${money(it)}" })
+                    FieldReadStatus("Distance", offer.distanceKm?.let { "${number(it)} km" })
+                    FieldReadStatus("Duration", offer.durationMin?.let { "$it min" })
+                    FieldReadStatus("Platform", offer.platform.takeIf { it != "Unidentified app" && it != "Unknown app" })
+                }
             }
         }
 
@@ -243,6 +283,21 @@ private fun RiderHome() {
             }
         }
         Text("4riders Next • Scanner engine 0.4.0", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+    }
+}
+
+@Composable
+private fun FieldReadStatus(label: String, value: String?) {
+    val found = !value.isNullOrBlank()
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(if (found) value!! else "Not detected", color = if (found) Color(0xFFB8C5D8) else Muted, fontSize = 12.sp)
+        }
+        Surface(color = if (found) Color(0xFF12352F) else Color(0xFF392A1D), shape = RoundedCornerShape(20.dp)) {
+            Text(if (found) "FOUND" else "NOT FOUND", Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                color = if (found) Color(0xFF71E2B8) else Color(0xFFFFC477), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
