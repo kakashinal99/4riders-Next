@@ -24,6 +24,8 @@ class FloatingScannerService : Service() {
 
     private lateinit var windowManager: WindowManager
     private var panel: TextView? = null
+    private var lastOfferDisplay: String? = null
+    private var latestStatus: String = "WAITING FOR OFFER"
     private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     private val resultReceiver = object : BroadcastReceiver() {
@@ -36,7 +38,9 @@ class FloatingScannerService : Service() {
                 }
                 LiveOfferAccessibilityService.ACTION_SCANNER_STATUS -> {
                     val status = intent.getStringExtra(LiveOfferAccessibilityService.EXTRA_SCANNER_STATUS).orEmpty()
-                    panel?.text = "4RIDERS NEXT\nLIVE SCANNER ON\n$status"
+                    latestStatus = status
+                    panel?.text = lastOfferDisplay?.let { "$it\nSTATUS: $latestStatus" }
+                        ?: "4RIDERS NEXT\nLIVE SCANNER ON\n$status"
                 }
             }
         }
@@ -55,7 +59,7 @@ class FloatingScannerService : Service() {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.START
             setPadding(16, 13, 16, 13)
-            maxLines = 10
+            maxLines = 12
             background = GradientDrawable().apply {
                 setColor(android.graphics.Color.rgb(10, 20, 34))
                 cornerRadius = 22f
@@ -113,7 +117,8 @@ class FloatingScannerService : Service() {
     private fun showOffer(raw: String) {
         val offer = OfferParser.parse(raw)
         if (offer.rawText.isBlank()) {
-            panel?.text = "4RIDERS NEXT\nSCAN FAILED • NO TEXT READ\nKeep the offer screen visible"
+            lastOfferDisplay = "4RIDERS NEXT\nSCAN FAILED • NO TEXT READ\nKeep the offer screen visible"
+            panel?.text = lastOfferDisplay
             return
         }
         val fields = listOf(
@@ -132,7 +137,8 @@ class FloatingScannerService : Service() {
         fields.forEach { (label, value) -> lines += "$label: ${value ?: "NOT FOUND"}" }
         lines += if (found == 0) "TEXT READ, BUT OFFER DETAILS NOT RECOGNISED" else "RESULT UPDATED • CHECK BEFORE USE"
         lines += "Tap panel to pause"
-        panel?.text = lines.joinToString("\n")
+        lastOfferDisplay = lines.joinToString("\n")
+        panel?.text = "$lastOfferDisplay\nSTATUS: $latestStatus"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
