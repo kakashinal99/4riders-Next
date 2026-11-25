@@ -30,7 +30,7 @@ object OfferParser {
         }.distinct()
         val distanceCandidates = distancePattern.findAll(text).mapNotNull {
             it.groupValues.getOrNull(1)?.toDecimal()
-        }.distinct()
+        }.distinct().toList()
         val durationCandidates = findDurations(text).distinct()
 
         val fare = fareCandidates.singleOrNull()
