@@ -1,6 +1,8 @@
 package com.fourriders.next.scanner
 
 import android.app.Service
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -25,6 +27,8 @@ class FloatingScannerService : Service() {
     private lateinit var windowManager: WindowManager
     private var panel: TextView? = null
     private var lastOfferDisplay: String? = null
+    private var session: OrderForm? = null
+    private var lastRaw: String = ""
     private var latestStatus: String = "WAITING FOR OFFER"
     private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
@@ -59,7 +63,7 @@ class FloatingScannerService : Service() {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.START
             setPadding(16, 13, 16, 13)
-            maxLines = 12
+            maxLines = 24
             background = GradientDrawable().apply {
                 setColor(android.graphics.Color.rgb(10, 20, 34))
                 cornerRadius = 22f
@@ -89,7 +93,10 @@ class FloatingScannerService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     val moved = kotlin.math.abs(event.rawX - startX) > 10 || kotlin.math.abs(event.rawY - startY) > 10
-                    if (!moved) {
+                    val heldMs = event.eventTime - event.downTime
+                    if (!moved && heldMs >= 700) {
+                        copyRawText()
+                    } else if (!moved) {
                         val enabled = !prefs.getBoolean(KEY_LIVE_ENABLED, false)
                         prefs.edit().putBoolean(KEY_LIVE_ENABLED, enabled).apply()
                         view.text = if (enabled) "4RIDERS NEXT\nLIVE SCANNER ON\nStarting accessibility…" else "4RIDERS NEXT\nLIVE SCANNER PAUSED\nTap to resume"
@@ -114,29 +121,35 @@ class FloatingScannerService : Service() {
         ContextCompat.registerReceiver(this, resultReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
+    private fun copyRawText() {
+        if (lastRaw.isBlank()) {
+            panel?.text = "4RIDERS NEXT\nNO TEXT READ YET\nOpen an order screen first"
+            return
+        }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("4riders raw text", lastRaw))
+        panel?.text = "4RIDERS NEXT\nRAW TEXT COPIED (${lastRaw.length} chars)\nPaste it into the chat"
+    }
+
     private fun showOffer(raw: String) {
-        val offer = OfferParser.parse(raw)
-        if (offer.rawText.isBlank()) {
-            lastOfferDisplay = "4RIDERS NEXT\nSCAN FAILED • NO TEXT READ\nKeep the offer screen visible"
+        if (raw.isBlank()) {
+            lastOfferDisplay = "4RIDERS NEXT\nSCAN FAILED • NO TEXT READ\nKeep the order screen visible"
             panel?.text = lastOfferDisplay
             return
         }
-        val fields = listOf(
-            "FARE" to offer.fare?.let { "RM %.2f".format(java.util.Locale.US, it) },
-            "PICKUP" to offer.pickup,
-            "DROP-OFF" to offer.dropoff,
-            "DISTANCE" to offer.distanceKm?.let { "%.1f km".format(java.util.Locale.US, it) },
-            "DURATION" to offer.durationMin?.let { "$it min" },
-            "PLATFORM" to offer.platform.takeIf { it != "Unidentified app" && it != "Unknown app" }
-        )
-        val found = fields.count { !it.second.isNullOrBlank() }
-        val lines = mutableListOf(
-            "4RIDERS NEXT • LIVE SCAN",
-            if (found == fields.size) "OFFER READ • ALL FIELDS FOUND" else "PARTIAL READ • $found/${fields.size} FIELDS FOUND"
-        )
-        fields.forEach { (label, value) -> lines += "$label: ${value ?: "NOT FOUND"}" }
-        lines += if (found == 0) "TEXT READ, BUT OFFER DETAILS NOT RECOGNISED" else "RESULT UPDATED • CHECK BEFORE USE"
-        lines += "Tap panel to pause"
+        lastRaw = raw
+        val parsed = OrderFormParser.parse(raw)
+        val form = if (parsed.isEmpty) session else OrderFormParser.merge(session, parsed)
+        session = form
+        val lines = mutableListOf("4RIDERS NEXT • ORDER FORM")
+        if (form == null) {
+            lines += "NO ORDER FIELDS ON THIS SCREEN"
+        } else {
+            if (parsed.isEmpty) lines += "NO ORDER FIELDS ON SCREEN • SHOWING LAST ORDER"
+            lines += OrderFormParser.render(form)
+            lines += parsed.notes
+        }
+        lines += "Tap = pause • hold = copy raw text"
         lastOfferDisplay = lines.joinToString("\n")
         panel?.text = "$lastOfferDisplay\nSTATUS: $latestStatus"
     }
