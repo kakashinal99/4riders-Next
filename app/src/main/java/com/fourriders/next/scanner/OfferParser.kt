@@ -4,10 +4,8 @@ import com.fourriders.next.data.TripOffer
 import java.util.Locale
 
 /**
- * Platform-neutral first-pass offer parser.
- *
- * Deliberately conservative: money is only accepted with an explicit currency marker,
- * and distance/time must carry recognizable units. OCR output is never treated as ground truth.
+ * First-pass, platform-agnostic parser. It intentionally refuses to guess when
+ * more than one plausible fare, distance or duration is present.
  */
 object OfferParser {
     private val moneyPatterns = listOf(
@@ -27,30 +25,26 @@ object OfferParser {
 
     fun parse(text: String): TripOffer {
         val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
-        val fareCandidates = moneyPatterns.mapNotNull { it.find(text)?.groupValues?.getOrNull(1)?.toDecimal() }
-            .distinct()
+        val fareCandidates = moneyPatterns.flatMap { pattern ->
+            pattern.findAll(text).mapNotNull { it.groupValues.getOrNull(1)?.toDecimal() }.toList()
+        }.distinct()
         val distanceCandidates = distancePattern.findAll(text).mapNotNull {
             it.groupValues.getOrNull(1)?.toDecimal()
-        }.distinct().toList()
+        }.distinct()
         val durationCandidates = findDurations(text).distinct()
 
         val fare = fareCandidates.singleOrNull()
         val distance = distanceCandidates.singleOrNull()
         val duration = durationCandidates.singleOrNull()
-
-        val pickup = extractLocation(lines, listOf(
-            "pickup", "pick up", "pick-up", "from", "origin", "starting point", "ambil"
-        ))
-        val dropoff = extractLocation(lines, listOf(
-            "dropoff", "drop off", "drop-off", "destination", "to", "going to", "hantar"
-        ))
+        val pickup = extractLocation(lines, listOf("pickup", "pick up", "pick-up", "from", "origin", "starting point", "ambil"))
+        val dropoff = extractLocation(lines, listOf("dropoff", "drop off", "drop-off", "destination", "to", "going to", "hantar"))
 
         val notes = mutableListOf<String>()
-        if (fareCandidates.size > 1) notes += "Lebih daripada satu nilai wang dikesan; tambang tidak dipilih secara automatik."
-        else if (fare == null) notes += "Tambang dengan label mata wang yang jelas belum dikenal pasti."
-        if (distanceCandidates.size > 1) notes += "Lebih daripada satu jarak dikesan; semak sama ada jarak perjalanan atau jarak pickup."
+        if (fareCandidates.size > 1) notes += "Beberapa nilai wang dikesan; tambang tidak dipilih secara automatik."
+        else if (fare == null) notes += "Tambang RM/MYR belum dikenal pasti."
+        if (distanceCandidates.size > 1) notes += "Beberapa jarak dikesan; semak jarak perjalanan yang betul."
         else if (distance == null) notes += "Jarak dalam KM belum dikenal pasti."
-        if (durationCandidates.size > 1) notes += "Lebih daripada satu tempoh dikesan; semak masa perjalanan yang betul."
+        if (durationCandidates.size > 1) notes += "Beberapa tempoh dikesan; semak masa perjalanan yang betul."
         else if (duration == null) notes += "Tempoh perjalanan belum dikenal pasti."
         if (pickup == null) notes += "Lokasi pickup belum dikenal pasti."
         if (dropoff == null) notes += "Lokasi drop-off belum dikenal pasti."
@@ -61,9 +55,23 @@ object OfferParser {
             durationMin = duration,
             pickup = pickup,
             dropoff = dropoff,
+            platform = detectPlatform(text),
             rawText = text,
             confidenceNotes = notes
         )
+    }
+
+    private fun detectPlatform(text: String): String {
+        val value = text.lowercase(Locale.ROOT)
+        return when {
+            "grab" in value -> "Grab"
+            "indrive" in value || "in drive" in value -> "inDrive"
+            "foodpanda" in value -> "foodpanda"
+            "lalamove" in value -> "Lalamove"
+            "maxim" in value -> "Maxim"
+            "airasia ride" in value || "airasia" in value -> "AirAsia Ride"
+            else -> "Unidentified app"
+        }
     }
 
     private fun findDurations(text: String): List<Int> {
@@ -93,8 +101,9 @@ object OfferParser {
             val line = lines[index]
             val normalized = line.lowercase(Locale.ROOT)
             val label = labels.firstOrNull { normalized.startsWith(it) } ?: continue
-            val remainder = line.substringAfter(':', "").trim()
-                .ifBlank { line.removePrefix(line.take(label.length)).trim().trim('-', '—', ':') }
+            val remainder = line.substringAfter(':', "")
+                .ifBlank { line.drop(label.length).trim().trim('-', '—', ':') }
+                .trim()
             if (remainder.length >= 3 && !looksLikeMetric(remainder)) return remainder
             val next = lines.getOrNull(index + 1)
             if (next != null && next.length >= 3 && !looksLikeMetric(next)) return next
@@ -105,7 +114,8 @@ object OfferParser {
     private fun looksLikeMetric(value: String): Boolean =
         moneyPatterns.any { it.containsMatchIn(value) } ||
             distancePattern.containsMatchIn(value) ||
-            compactTimePattern.containsMatchIn(value)
+            compactTimePattern.containsMatchIn(value) ||
+            wordTimePattern.containsMatchIn(value)
 
     private fun String.toDecimal(): Double? =
         replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 && it < 100_000.0 }
