@@ -16,6 +16,7 @@ class LiveOfferAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastText = ""
     private var lastSentAt = 0L
+    private var lastScanAt = 0L
     private var lastStatus = ""
 
     private val poll = object : Runnable {
@@ -42,7 +43,9 @@ class LiveOfferAccessibilityService : AccessibilityService() {
 
     private fun scanOtherAppWindows() {
         val now = System.currentTimeMillis()
-        if (now - lastSentAt < MIN_SCAN_INTERVAL_MS) return
+        if (now - lastScanAt < MIN_SCAN_INTERVAL_MS) return
+        lastScanAt = now
+        sendStatus("SCANNING VISIBLE APP")
 
         val candidates = runCatching {
             windows.mapNotNull { window ->
@@ -56,10 +59,11 @@ class LiveOfferAccessibilityService : AccessibilityService() {
         }.getOrDefault(emptyList())
 
         if (candidates.isEmpty()) {
-            sendStatus("NO OTHER APP WINDOW")
+            sendStatus("NO OTHER APP WINDOW • OPEN AN OFFER")
             return
         }
 
+        sendStatus("READING APP TEXT • ${candidates.size} WINDOW(S)")
         var bestText = ""
         for ((_, root, _) in candidates) {
             val parts = LinkedHashSet<String>()
@@ -74,10 +78,11 @@ class LiveOfferAccessibilityService : AccessibilityService() {
             return
         }
         if (bestText == lastText) {
-            sendStatus("TEXT FOUND • NO CHANGE")
+            sendStatus("TEXT READ • NO NEW CHANGES")
             return
         }
 
+        sendStatus("TEXT READ • ANALYSING OFFER")
         lastText = bestText
         lastSentAt = now
         sendBroadcast(
@@ -85,7 +90,7 @@ class LiveOfferAccessibilityService : AccessibilityService() {
                 .setPackage(packageName)
                 .putExtra(ScreenCaptureService.EXTRA_OCR_TEXT, bestText)
         )
-        sendStatus("TEXT SENT TO SCANNER")
+        sendStatus("TEXT SENT • CHECKING FIELDS")
     }
 
     private fun collectVisibleText(node: AccessibilityNodeInfo?, output: MutableSet<String>, count: IntArray) {
