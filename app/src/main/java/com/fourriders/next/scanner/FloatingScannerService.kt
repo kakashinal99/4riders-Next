@@ -127,7 +127,7 @@ class FloatingScannerService : Service() {
         val found = fields.count { !it.second.isNullOrBlank() }
         val lines = mutableListOf(
             "4RIDERS NEXT • LIVE SCAN",
-            if (found == fields.size) "OFFER READ • ALL FIELDS FOUND" else "PARTIAL READ • $found/\${fields.size} FIELDS FOUND"
+            if (found == fields.size) "OFFER READ • ALL FIELDS FOUND" else "PARTIAL READ • $found/${fields.size} FIELDS FOUND"
         )
         fields.forEach { (label, value) -> lines += "$label: ${value ?: "NOT FOUND"}" }
         lines += if (found == 0) "TEXT READ, BUT OFFER DETAILS NOT RECOGNISED" else "RESULT UPDATED • CHECK BEFORE USE"
