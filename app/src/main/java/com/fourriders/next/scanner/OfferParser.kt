@@ -100,7 +100,7 @@ object OfferParser {
         for (index in lines.indices) {
             val line = lines[index]
             val normalized = line.lowercase(Locale.ROOT).trim()
-            val numberedStopHeading = Regex("^\\\\d+\\\\.\\\\s*(pick\\\\s*up|drop\\\\s*off)(?:\\\\s+item)?$").find(normalized)
+            val numberedStopHeading = Regex("^\\d+\\.\\s*(pick\\s*up|drop\\s*off)(?:\\s+item)?$").find(normalized)
             val isPickupHeading = numberedStopHeading?.groupValues?.getOrNull(1)?.contains("pick") == true
             val isDropoffHeading = numberedStopHeading?.groupValues?.getOrNull(1)?.contains("drop") == true
             val matchesStopHeading = (labels.any { it.startsWith("pickup") || it.startsWith("pick up") } && isPickupHeading) ||
