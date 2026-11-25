@@ -63,7 +63,8 @@ class FloatingScannerService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     val moved = kotlin.math.abs(event.rawX - startX) > 8 || kotlin.math.abs(event.rawY - startY) > 8
-                    if (!moved) startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    if (!moved) startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            .putExtra(MainActivity.EXTRA_FROM_FLOATING_SCANNER, true))
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {

@@ -48,6 +48,7 @@ private val Cyan = Color(0xFF45E0D0)
 private val Muted = Color(0xFF9EADC2)
 
 class MainActivity : ComponentActivity() {
+    companion object { const val EXTRA_FROM_FLOATING_SCANNER = "from_floating_scanner" }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -99,6 +100,14 @@ private fun RiderHome() {
         } else {
             busy = false
             status = "Kebenaran tangkapan skrin tidak diberikan."
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val activity = context as? Activity
+        if (activity?.intent?.getBooleanExtra(MainActivity.EXTRA_FROM_FLOATING_SCANNER, false) == true) {
+            activity.intent.removeExtra(MainActivity.EXTRA_FROM_FLOATING_SCANNER)
+            screenCapture.launch((context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent())
         }
     }
 
