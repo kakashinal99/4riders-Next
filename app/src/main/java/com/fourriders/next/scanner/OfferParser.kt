@@ -99,14 +99,25 @@ object OfferParser {
     private fun extractLocation(lines: List<String>, labels: List<String>): String? {
         for (index in lines.indices) {
             val line = lines[index]
-            val normalized = line.lowercase(Locale.ROOT)
-            val label = labels.firstOrNull { normalized.startsWith(it) } ?: continue
-            val remainder = line.substringAfter(':', "")
-                .ifBlank { line.drop(label.length).trim().trim('-', '—', ':') }
-                .trim()
+            val normalized = line.lowercase(Locale.ROOT).trim()
+            val numberedStopHeading = Regex("^\\\\d+\\\\.\\\\s*(pick\\\\s*up|drop\\\\s*off)(?:\\\\s+item)?$").find(normalized)
+            val isPickupHeading = numberedStopHeading?.groupValues?.getOrNull(1)?.contains("pick") == true
+            val isDropoffHeading = numberedStopHeading?.groupValues?.getOrNull(1)?.contains("drop") == true
+            val matchesStopHeading = (labels.any { it.startsWith("pickup") || it.startsWith("pick up") } && isPickupHeading) ||
+                (labels.any { it.startsWith("dropoff") || it.startsWith("drop off") } && isDropoffHeading)
+            val label = labels.firstOrNull { normalized.startsWith(it) }
+            if (label == null && !matchesStopHeading) continue
+            val remainder = if (label != null) {
+                line.substringAfter(':', "").ifBlank { line.drop(label.length).trim().trim('-', '—', ':') }.trim()
+            } else ""
             if (remainder.length >= 3 && !looksLikeMetric(remainder)) return remainder
-            val next = lines.getOrNull(index + 1)
-            if (next != null && next.length >= 3 && !looksLikeMetric(next)) return next
+            val next = lines.drop(index + 1).firstOrNull { candidate ->
+                candidate.length >= 8 && !looksLikeMetric(candidate) &&
+                    !candidate.startsWith("Order ID", ignoreCase = true) &&
+                    !candidate.startsWith("Drop-off details", ignoreCase = true) &&
+                    !candidate.startsWith("Show details", ignoreCase = true)
+            }
+            if (next != null) return next
         }
         return null
     }
