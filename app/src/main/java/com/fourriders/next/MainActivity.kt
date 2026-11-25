@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.hardware.display.DisplayManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
@@ -39,6 +38,7 @@ import com.fourriders.next.scanner.OfferParser
 import com.fourriders.next.scanner.ScreenCaptureService
 import com.fourriders.next.scanner.FloatingScannerService
 import com.fourriders.next.scanner.TextScanner
+import com.fourriders.next.scanner.LiveOfferAccessibilityService
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -92,7 +92,15 @@ private fun RiderHome() {
         if (result.resultCode == Activity.RESULT_OK && data != null) {
             busy = false
             captureActive = true
-            status = "Live OCR aktif. Skrin dianalisis secara berkala pada peranti ini."
+            status = "Kebenaran diterima. Menyambungkan OCR ke floating scanner…"
+            context.getSharedPreferences(FloatingScannerService.PREFS, Context.MODE_PRIVATE)
+                .edit().putBoolean(FloatingScannerService.KEY_LIVE_ENABLED, true).apply()
+            if (Settings.canDrawOverlays(context)) {
+                context.startService(Intent(context, FloatingScannerService::class.java))
+                overlayEnabled = true
+            } else {
+                status = "Live OCR akan berjalan. Benarkan Floating Overlay untuk lihat hasil di atas aplikasi lain."
+            }
             val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
                 putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                 putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
@@ -108,20 +116,35 @@ private fun RiderHome() {
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                val text = intent?.getStringExtra(ScreenCaptureService.EXTRA_OCR_TEXT).orEmpty()
-                if (text.isNotBlank()) {
-                    offer = OfferParser.parse(text)
-                    status = "Live OCR menemui teks. Semak butiran yang diekstrak."
-                } else {
-                    status = "Live OCR aktif tetapi tiada teks dikesan pada frame ini."
+                when (intent?.action) {
+                    ScreenCaptureService.ACTION_OCR_RESULT -> {
+                        val text = intent.getStringExtra(ScreenCaptureService.EXTRA_OCR_TEXT).orEmpty()
+                        if (text.isNotBlank()) {
+                            offer = OfferParser.parse(text)
+                            status = "OCR berjaya membaca ${text.length} aksara. Semak teks sumber dan medan yang ditemui."
+                        } else {
+                            status = "OCR berjalan tetapi tiada teks dikesan dalam frame ini."
+                        }
+                        busy = false
+                    }
+                    LiveOfferAccessibilityService.ACTION_SCANNER_STATUS -> {
+                        val scannerStatus = intent.getStringExtra(LiveOfferAccessibilityService.EXTRA_SCANNER_STATUS).orEmpty()
+                        if (scannerStatus.isNotBlank()) {
+                            status = scannerStatus
+                            if (scannerStatus == "LIVE OCR STOPPED") captureActive = false
+                        }
+                    }
                 }
-                busy = false
             }
+        }
+        val filter = IntentFilter().apply {
+            addAction(ScreenCaptureService.ACTION_OCR_RESULT)
+            addAction(LiveOfferAccessibilityService.ACTION_SCANNER_STATUS)
         }
         ContextCompat.registerReceiver(
             context,
             receiver,
-            IntentFilter(ScreenCaptureService.ACTION_OCR_RESULT),
+            filter,
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
