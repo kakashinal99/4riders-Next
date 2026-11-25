@@ -189,9 +189,11 @@ private fun RiderHome() {
                 }
                 OutlinedButton(
                     onClick = {
+                        context.getSharedPreferences(FloatingScannerService.PREFS, Context.MODE_PRIVATE)
+                            .edit().putBoolean(FloatingScannerService.KEY_LIVE_ENABLED, false).apply()
                         context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP_CAPTURE))
                         captureActive = false
-                        status = "Live OCR dihentikan."
+                        status = "Live OCR dan live scanner dihentikan."
                     },
                     enabled = captureActive,
                     modifier = Modifier.fillMaxWidth(),
