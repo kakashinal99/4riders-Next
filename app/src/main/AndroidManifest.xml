@@ -14,6 +14,15 @@
             android:name=".scanner.FloatingScannerService"
             android:exported="false" />
         <service
+            android:name=".scanner.LiveOfferAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/live_scanner_accessibility" />
+        </service>
+        <service
             android:name=".scanner.ScreenCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />

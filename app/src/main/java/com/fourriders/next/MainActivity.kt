@@ -48,7 +48,6 @@ private val Cyan = Color(0xFF45E0D0)
 private val Muted = Color(0xFF9EADC2)
 
 class MainActivity : ComponentActivity() {
-    companion object { const val EXTRA_FROM_FLOATING_SCANNER = "from_floating_scanner" }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -100,14 +99,6 @@ private fun RiderHome() {
         } else {
             busy = false
             status = "Kebenaran tangkapan skrin tidak diberikan."
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val activity = context as? Activity
-        if (activity?.intent?.getBooleanExtra(MainActivity.EXTRA_FROM_FLOATING_SCANNER, false) == true) {
-            activity.intent.removeExtra(MainActivity.EXTRA_FROM_FLOATING_SCANNER)
-            screenCapture.launch((context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent())
         }
     }
 
@@ -168,6 +159,16 @@ private fun RiderHome() {
                     Text(if (busy) "SCANNING…" else "SCAN CURRENT SCREEN", fontWeight = FontWeight.Black)
                 }
                 OutlinedButton(
+                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) {
+                    Icon(Icons.Default.Bolt, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("ENABLE LIVE SCANNER ACCESS")
+                }
+                OutlinedButton(
                     onClick = {
                         if (Settings.canDrawOverlays(context)) {
                             context.startService(Intent(context, FloatingScannerService::class.java))
@@ -182,9 +183,9 @@ private fun RiderHome() {
                 ) {
                     Icon(Icons.Default.Bolt, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (overlayEnabled) "SHOW FLOATING SCANNER" else "ENABLE FLOATING SCANNER")
+                    Text(if (overlayEnabled) "SHOW FLOATING SCANNER" else "ALLOW FLOATING OVERLAY")
                 }
-                Text("Floating scanner: ${if (overlayEnabled) "permission available" else "permission required"}. Bubble boleh dibuka di atas aplikasi lain; tekan untuk kembali ke scanner.", color = Muted, fontSize = 11.sp)
+                Text("Untuk live scan: aktifkan 4riders Next dalam Android Accessibility Settings, kemudian buka floating panel. Panel boleh di-drag dan tap untuk ON/OFF. Bacaan diproses pada peranti sahaja.", color = Muted, fontSize = 11.sp)
                 OutlinedButton(
                     onClick = { picker.launch("image/*") },
                     enabled = !busy,
@@ -291,7 +292,7 @@ private fun RiderHome() {
                 }
             }
         }
-        Text("4riders Next • Scanner engine 0.4.0", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Text("4riders Next • Live scanner engine 0.6.0", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }
 
