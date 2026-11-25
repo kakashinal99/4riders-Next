@@ -111,12 +111,21 @@ object OfferParser {
                 line.substringAfter(':', "").ifBlank { line.drop(label.length).trim().trim('-', '—', ':') }.trim()
             } else ""
             if (remainder.length >= 3 && !looksLikeMetric(remainder)) return remainder
-            val next = lines.drop(index + 1).firstOrNull { candidate ->
-                candidate.length >= 8 && !looksLikeMetric(candidate) &&
-                    !candidate.startsWith("Order ID", ignoreCase = true) &&
-                    !candidate.startsWith("Drop-off details", ignoreCase = true) &&
-                    !candidate.startsWith("Show details", ignoreCase = true)
-            }
+            val next = lines.drop(index + 1)
+                .takeWhile { !Regex("^\\d+\\.\\s*(pick\\s*up|drop\\s*off)(?:\\s+item)?$", RegexOption.IGNORE_CASE).matches(it.trim()) }
+                .firstOrNull { candidate ->
+                    val value = candidate.trim()
+                    value.length >= 8 &&
+                        !looksLikeMetric(value) &&
+                        !value.equals("pickup", ignoreCase = true) &&
+                        !value.equals("pick up", ignoreCase = true) &&
+                        !value.equals("dropoff", ignoreCase = true) &&
+                        !value.equals("drop off", ignoreCase = true) &&
+                        !value.startsWith("Order ID", ignoreCase = true) &&
+                        !value.startsWith("Drop-off details", ignoreCase = true) &&
+                        !value.startsWith("Pickup details", ignoreCase = true) &&
+                        !value.startsWith("Show details", ignoreCase = true)
+                }
             if (next != null) return next
         }
         return null
