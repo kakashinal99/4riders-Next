@@ -11,8 +11,23 @@ android {
         applicationId = "com.fourriders.next"
         minSdk = 24
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.6.8"
+        versionCode = 15
+        versionName = "0.6.9"
+    }
+    signingConfigs {
+        // Fixed debug key (public, debug builds only) so CI builds can update over each other.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+    buildTypes {
+        debug {
+            // Installs side by side with any older/leftover com.fourriders.next build.
+            applicationIdSuffix = ".dev"
+        }
     }
     buildFeatures { compose = true }
     compileOptions {
