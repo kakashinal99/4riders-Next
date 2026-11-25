@@ -64,6 +64,7 @@ private fun RiderHome() {
     val scope = rememberCoroutineScope()
     var offer by remember { mutableStateOf(TripOffer()) }
     var busy by remember { mutableStateOf(false) }
+    var captureActive by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Pilih screenshot atau mula imbas skrin.") }
     var overlayEnabled by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     val overlayPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -89,8 +90,9 @@ private fun RiderHome() {
     val screenCapture = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
         if (result.resultCode == Activity.RESULT_OK && data != null) {
-            busy = true
-            status = "Mendapatkan satu tangkapan skrin dengan kebenaran Android…"
+            busy = false
+            captureActive = true
+            status = "Live OCR aktif. Skrin dianalisis secara berkala pada peranti ini."
             val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
                 putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                 putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
@@ -98,6 +100,7 @@ private fun RiderHome() {
             ContextCompat.startForegroundService(context, serviceIntent)
         } else {
             busy = false
+            captureActive = false
             status = "Kebenaran tangkapan skrin tidak diberikan."
         }
     }
@@ -106,10 +109,13 @@ private fun RiderHome() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 val text = intent?.getStringExtra(ScreenCaptureService.EXTRA_OCR_TEXT).orEmpty()
-                offer = OfferParser.parse(text)
+                if (text.isNotBlank()) {
+                    offer = OfferParser.parse(text)
+                    status = "Live OCR menemui teks. Semak butiran yang diekstrak."
+                } else {
+                    status = "Live OCR aktif tetapi tiada teks dikesan pada frame ini."
+                }
                 busy = false
-                status = if (text.isBlank()) "Tiada teks dapat dibaca pada skrin semasa."
-                else "Tangkapan skrin dianalisis. Semak nilai sebelum digunakan."
             }
         }
         ContextCompat.registerReceiver(
@@ -144,7 +150,7 @@ private fun RiderHome() {
                 }
                 Text("Kenal pasti tawaran secara automatik", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Baca teks tawaran yang dipaparkan melalui Live Scanner, atau gunakan screenshot dan tangkapan skrin manual.",
+                    "Live OCR membaca skrin secara berkala selepas anda memberi kebenaran Android. Pemprosesan dibuat pada peranti sahaja.",
                     color = Muted, fontSize = 13.sp
                 )
                 Button(
@@ -156,7 +162,20 @@ private fun RiderHome() {
                 ) {
                     Icon(Icons.Default.PhoneAndroid, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (busy) "SCANNING…" else "SCAN CURRENT SCREEN", fontWeight = FontWeight.Black)
+                    Text(if (captureActive) "LIVE OCR ACTIVE" else "START LIVE OCR", fontWeight = FontWeight.Black)
+                }
+                OutlinedButton(
+                    onClick = {
+                        context.startService(Intent(context, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP_CAPTURE))
+                        captureActive = false
+                        status = "Live OCR dihentikan."
+                    },
+                    enabled = captureActive,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFB86B))
+                ) {
+                    Text("STOP LIVE OCR", fontWeight = FontWeight.Bold)
                 }
                 OutlinedButton(
                     onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
@@ -185,7 +204,7 @@ private fun RiderHome() {
                     Spacer(Modifier.width(8.dp))
                     Text(if (overlayEnabled) "SHOW FLOATING SCANNER" else "ALLOW FLOATING OVERLAY")
                 }
-                Text("Untuk live scan: aktifkan 4riders Next dalam Android Accessibility Settings, kemudian buka floating panel. Panel boleh di-drag dan tap untuk ON/OFF. Bacaan diproses pada peranti sahaja.", color = Muted, fontSize = 11.sp)
+                Text("Live OCR memerlukan kebenaran screen capture Android. Accessibility boleh diaktifkan sebagai sumber teks tambahan. Floating panel boleh di-drag dan tap untuk ON/OFF.", color = Muted, fontSize = 11.sp)
                 OutlinedButton(
                     onClick = { picker.launch("image/*") },
                     enabled = !busy,
