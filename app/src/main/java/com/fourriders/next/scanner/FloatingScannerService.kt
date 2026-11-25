@@ -112,12 +112,25 @@ class FloatingScannerService : Service() {
 
     private fun showOffer(raw: String) {
         val offer = OfferParser.parse(raw)
-        val lines = mutableListOf("4RIDERS NEXT • LIVE SCAN", if (offer.rawText.isBlank()) "No readable offer text" else "OFFER DETECTED")
-        lines += "FARE: " + (offer.fare?.let { "RM %.2f".format(java.util.Locale.US, it) } ?: "NOT FOUND")
-        lines += "PICKUP: " + (offer.pickup ?: "NOT FOUND")
-        lines += "DROP-OFF: " + (offer.dropoff ?: "NOT FOUND")
-        lines += "DISTANCE: " + (offer.distanceKm?.let { "%.1f km".format(java.util.Locale.US, it) } ?: "NOT FOUND")
-        lines += "DURATION: " + (offer.durationMin?.let { "$it min" } ?: "NOT FOUND")
+        if (offer.rawText.isBlank()) {
+            panel?.text = "4RIDERS NEXT\nSCAN FAILED • NO TEXT READ\nKeep the offer screen visible"
+            return
+        }
+        val fields = listOf(
+            "FARE" to offer.fare?.let { "RM %.2f".format(java.util.Locale.US, it) },
+            "PICKUP" to offer.pickup,
+            "DROP-OFF" to offer.dropoff,
+            "DISTANCE" to offer.distanceKm?.let { "%.1f km".format(java.util.Locale.US, it) },
+            "DURATION" to offer.durationMin?.let { "$it min" },
+            "PLATFORM" to offer.platform.takeIf { it != "Unidentified app" && it != "Unknown app" }
+        )
+        val found = fields.count { !it.second.isNullOrBlank() }
+        val lines = mutableListOf(
+            "4RIDERS NEXT • LIVE SCAN",
+            if (found == fields.size) "OFFER READ • ALL FIELDS FOUND" else "PARTIAL READ • $found/\${fields.size} FIELDS FOUND"
+        )
+        fields.forEach { (label, value) -> lines += "$label: ${value ?: "NOT FOUND"}" }
+        lines += if (found == 0) "TEXT READ, BUT OFFER DETAILS NOT RECOGNISED" else "RESULT UPDATED • CHECK BEFORE USE"
         lines += "Tap panel to pause"
         panel?.text = lines.joinToString("\n")
     }
