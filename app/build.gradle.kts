@@ -11,8 +11,8 @@ android {
         applicationId = "com.fourriders.next"
         minSdk = 24
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.6.7"
+        versionCode = 14
+        versionName = "0.6.8"
     }
     buildFeatures { compose = true }
     compileOptions {
