@@ -8,54 +8,84 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Opt-in live reader. Polls the active window while the user has switched
- * Live Scanner ON, because some apps do not emit a fresh event after overlay taps.
- * Password fields are never read. All processing remains on-device.
+ * User-controlled on-device reader. It checks other visible app windows rather
+ * than relying only on rootInActiveWindow (which can point at our own overlay).
+ * Password nodes are excluded; text is never uploaded.
  */
 class LiveOfferAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastText = ""
     private var lastSentAt = 0L
+    private var lastStatus = ""
 
     private val poll = object : Runnable {
         override fun run() {
-            if (isLiveEnabled()) scanActiveWindow()
+            if (isLiveEnabled()) scanOtherAppWindows()
             handler.postDelayed(this, POLL_INTERVAL_MS)
         }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        sendStatus("ACCESSIBILITY CONNECTED")
         handler.removeCallbacks(poll)
         handler.post(poll)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !isLiveEnabled()) return
-        // Do not ignore app events: overlay interaction may be the only event
-        // after the user switches scanning ON. Polling still reads active app window.
-        scanActiveWindow()
+        if (event != null && isLiveEnabled()) scanOtherAppWindows()
     }
 
     private fun isLiveEnabled(): Boolean =
         getSharedPreferences(FloatingScannerService.PREFS, MODE_PRIVATE)
             .getBoolean(FloatingScannerService.KEY_LIVE_ENABLED, false)
 
-    private fun scanActiveWindow() {
+    private fun scanOtherAppWindows() {
         val now = System.currentTimeMillis()
         if (now - lastSentAt < MIN_SCAN_INTERVAL_MS) return
-        val root = rootInActiveWindow ?: return
-        val parts = LinkedHashSet<String>()
-        collectVisibleText(root, parts, intArrayOf(0))
-        val text = parts.joinToString("\n").take(MAX_TEXT_LENGTH).trim()
-        if (text.length < 8 || text == lastText) return
-        lastText = text
+
+        val candidates = runCatching {
+            windows.mapNotNull { window ->
+                val root = window.root ?: return@mapNotNull null
+                if (root.packageName?.toString() == packageName) {
+                    root.recycle()
+                    return@mapNotNull null
+                }
+                Triple(if (window.isActive) 2 else if (window.isFocused) 1 else 0, root, window.type)
+            }.sortedByDescending { it.first }
+        }.getOrDefault(emptyList())
+
+        if (candidates.isEmpty()) {
+            sendStatus("NO OTHER APP WINDOW")
+            return
+        }
+
+        var bestText = ""
+        for ((_, root, _) in candidates) {
+            val parts = LinkedHashSet<String>()
+            collectVisibleText(root, parts, intArrayOf(0))
+            val candidateText = parts.joinToString("\n").take(MAX_TEXT_LENGTH).trim()
+            root.recycle()
+            if (candidateText.length > bestText.length) bestText = candidateText
+        }
+
+        if (bestText.length < 8) {
+            sendStatus("WINDOW FOUND • NO ACCESSIBLE TEXT")
+            return
+        }
+        if (bestText == lastText) {
+            sendStatus("TEXT FOUND • NO CHANGE")
+            return
+        }
+
+        lastText = bestText
         lastSentAt = now
         sendBroadcast(
             Intent(ScreenCaptureService.ACTION_OCR_RESULT)
                 .setPackage(packageName)
-                .putExtra(ScreenCaptureService.EXTRA_OCR_TEXT, text)
+                .putExtra(ScreenCaptureService.EXTRA_OCR_TEXT, bestText)
         )
+        sendStatus("TEXT SENT TO SCANNER")
     }
 
     private fun collectVisibleText(node: AccessibilityNodeInfo?, output: MutableSet<String>, count: IntArray) {
@@ -71,6 +101,16 @@ class LiveOfferAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun sendStatus(status: String) {
+        if (status == lastStatus && status != "TEXT SENT TO SCANNER") return
+        lastStatus = status
+        sendBroadcast(
+            Intent(ACTION_SCANNER_STATUS)
+                .setPackage(packageName)
+                .putExtra(EXTRA_SCANNER_STATUS, status)
+        )
+    }
+
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
@@ -78,11 +118,13 @@ class LiveOfferAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    private companion object {
-        const val POLL_INTERVAL_MS = 900L
-        const val MIN_SCAN_INTERVAL_MS = 700L
-        const val MAX_NODES = 700
-        const val MAX_TEXT_ITEMS = 140
-        const val MAX_TEXT_LENGTH = 10000
+    companion object {
+        const val ACTION_SCANNER_STATUS = "com.fourriders.next.SCANNER_STATUS"
+        const val EXTRA_SCANNER_STATUS = "scanner_status"
+        private const val POLL_INTERVAL_MS = 900L
+        private const val MIN_SCAN_INTERVAL_MS = 700L
+        private const val MAX_NODES = 900
+        private const val MAX_TEXT_ITEMS = 180
+        private const val MAX_TEXT_LENGTH = 12000
     }
 }

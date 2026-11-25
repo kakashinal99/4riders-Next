@@ -28,8 +28,17 @@ class FloatingScannerService : Service() {
 
     private val resultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val raw = intent?.getStringExtra(ScreenCaptureService.EXTRA_OCR_TEXT).orEmpty()
-            if (prefs.getBoolean(KEY_LIVE_ENABLED, false)) showOffer(raw)
+            if (!prefs.getBoolean(KEY_LIVE_ENABLED, false)) return
+            when (intent?.action) {
+                ScreenCaptureService.ACTION_OCR_RESULT -> {
+                    val raw = intent.getStringExtra(ScreenCaptureService.EXTRA_OCR_TEXT).orEmpty()
+                    showOffer(raw)
+                }
+                LiveOfferAccessibilityService.ACTION_SCANNER_STATUS -> {
+                    val status = intent.getStringExtra(LiveOfferAccessibilityService.EXTRA_SCANNER_STATUS).orEmpty()
+                    panel?.text = "4RIDERS NEXT\nLIVE SCANNER ON\n$status"
+                }
+            }
         }
     }
 
@@ -53,7 +62,7 @@ class FloatingScannerService : Service() {
                 setStroke(2, android.graphics.Color.rgb(69, 224, 208))
             }
             elevation = 16f
-            text = if (prefs.getBoolean(KEY_LIVE_ENABLED, false)) "4RIDERS NEXT\nLIVE SCANNER ON\nWaiting for offer…" else "4RIDERS NEXT\nLIVE SCANNER OFF\nTap to start"
+            text = if (prefs.getBoolean(KEY_LIVE_ENABLED, false)) "4RIDERS NEXT\nLIVE SCANNER ON\nStarting accessibility…" else "4RIDERS NEXT\nLIVE SCANNER OFF\nTap to start"
         }
         val layout = WindowManager.LayoutParams(
             (resources.displayMetrics.widthPixels * 0.72f).toInt(),
@@ -79,7 +88,7 @@ class FloatingScannerService : Service() {
                     if (!moved) {
                         val enabled = !prefs.getBoolean(KEY_LIVE_ENABLED, false)
                         prefs.edit().putBoolean(KEY_LIVE_ENABLED, enabled).apply()
-                        view.text = if (enabled) "4RIDERS NEXT\nLIVE SCANNER ON\nWaiting for offer…" else "4RIDERS NEXT\nLIVE SCANNER PAUSED\nTap to resume"
+                        view.text = if (enabled) "4RIDERS NEXT\nLIVE SCANNER ON\nStarting accessibility…" else "4RIDERS NEXT\nLIVE SCANNER PAUSED\nTap to resume"
                     }
                     true
                 }
@@ -94,7 +103,11 @@ class FloatingScannerService : Service() {
         }
         panel = view
         windowManager.addView(view, layout)
-        ContextCompat.registerReceiver(this, resultReceiver, IntentFilter(ScreenCaptureService.ACTION_OCR_RESULT), ContextCompat.RECEIVER_NOT_EXPORTED)
+        val filter = IntentFilter().apply {
+            addAction(ScreenCaptureService.ACTION_OCR_RESULT)
+            addAction(LiveOfferAccessibilityService.ACTION_SCANNER_STATUS)
+        }
+        ContextCompat.registerReceiver(this, resultReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private fun showOffer(raw: String) {
