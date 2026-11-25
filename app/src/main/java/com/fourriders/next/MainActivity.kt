@@ -144,7 +144,7 @@ private fun RiderHome() {
                 }
                 Text("Kenal pasti tawaran secara automatik", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Baca tambang, jarak, tempoh dan lokasi daripada screenshot atau satu tangkapan skrin yang anda benarkan melalui Android.",
+                    "Baca teks tawaran yang dipaparkan melalui Live Scanner, atau gunakan screenshot dan tangkapan skrin manual.",
                     color = Muted, fontSize = 13.sp
                 )
                 Button(
@@ -197,7 +197,7 @@ private fun RiderHome() {
                     Spacer(Modifier.width(8.dp))
                     Text("PILIH SCREENSHOT")
                 }
-                Text("Privasi: Android akan meminta kebenaran setiap kali. 4riders Next hanya mengambil satu frame dan memproses OCR pada peranti; tiada rakaman berterusan.", color = Muted, fontSize = 11.sp)
+                Text("Privasi: Live Scanner hanya membaca teks UI yang kelihatan apabila anda ON-kan panel. Teks diproses pada peranti dan tidak dimuat naik. Screenshot manual menggunakan kebenaran tangkapan skrin Android.", color = Muted, fontSize = 11.sp)
                 Text(status, color = Muted, fontSize = 12.sp)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Cyan)
             }
@@ -292,7 +292,7 @@ private fun RiderHome() {
                 }
             }
         }
-        Text("4riders Next • Live scanner engine 0.6.0", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Text("4riders Next • Live scanner engine 0.6.1", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }
 
