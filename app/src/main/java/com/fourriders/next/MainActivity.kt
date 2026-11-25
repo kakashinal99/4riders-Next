@@ -1,5 +1,12 @@
 package com.fourriders.next
 
+import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.display.DisplayManager
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,8 +32,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.fourriders.next.data.TripOffer
 import com.fourriders.next.scanner.OfferParser
+import com.fourriders.next.scanner.ScreenCaptureService
 import com.fourriders.next.scanner.TextScanner
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -52,7 +62,7 @@ private fun RiderHome() {
     val scope = rememberCoroutineScope()
     var offer by remember { mutableStateOf(TripOffer()) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Pilih screenshot tawaran untuk mula mengimbas.") }
+    var status by remember { mutableStateOf("Pilih screenshot atau mula imbas skrin.") }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) scope.launch {
@@ -67,6 +77,41 @@ private fun RiderHome() {
                 .onFailure { status = "Imej tidak dapat dibaca. Cuba pilih imej lain." }
             busy = false
         }
+    }
+
+    val screenCapture = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            busy = true
+            status = "Mendapatkan satu tangkapan skrin dengan kebenaran Android…"
+            val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
+            }
+            ContextCompat.startForegroundService(context, serviceIntent)
+        } else {
+            busy = false
+            status = "Kebenaran tangkapan skrin tidak diberikan."
+        }
+    }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val text = intent?.getStringExtra(ScreenCaptureService.EXTRA_OCR_TEXT).orEmpty()
+                offer = OfferParser.parse(text)
+                busy = false
+                status = if (text.isBlank()) "Tiada teks dapat dibaca pada skrin semasa."
+                else "Tangkapan skrin dianalisis. Semak nilai sebelum digunakan."
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(ScreenCaptureService.ACTION_OCR_RESULT),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
     Column(
@@ -92,20 +137,32 @@ private fun RiderHome() {
                 }
                 Text("Kenal pasti tawaran secara automatik", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Mengesan aplikasi, tambang, jarak, tempoh dan lokasi daripada teks screenshot. Nilai yang bercanggah akan ditandakan untuk semakan.",
+                    "Baca tambang, jarak, tempoh dan lokasi daripada screenshot atau satu tangkapan skrin yang anda benarkan melalui Android.",
                     color = Muted, fontSize = 13.sp
                 )
                 Button(
-                    onClick = { picker.launch("image/*") },
+                    onClick = { screenCapture.launch((context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent()) },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Night),
                     shape = RoundedCornerShape(14.dp)
                 ) {
+                    Icon(Icons.Default.PhoneAndroid, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (busy) "SCANNING…" else "SCAN CURRENT SCREEN", fontWeight = FontWeight.Black)
+                }
+                OutlinedButton(
+                    onClick = { picker.launch("image/*") },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan)
+                ) {
                     Icon(Icons.Default.AddAPhoto, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (busy) "SCANNING…" else "PILIH SCREENSHOT", fontWeight = FontWeight.Black)
+                    Text("PILIH SCREENSHOT")
                 }
+                Text("Privasi: Android akan meminta kebenaran setiap kali. 4riders Next hanya mengambil satu frame dan memproses OCR pada peranti; tiada rakaman berterusan.", color = Muted, fontSize = 11.sp)
                 Text(status, color = Muted, fontSize = 12.sp)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Cyan)
             }
@@ -163,10 +220,7 @@ private fun RiderHome() {
                         Text(offer.perHour?.let { "RM ${money(it)}" } ?: "—", color = Cyan, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Text(
-                    "Kiraan sejam berdasarkan tempoh tawaran sahaja; belum mengambil kira perjalanan ke pickup, menunggu, tol atau kos operasi.",
-                    color = Color(0xFF8292A8), fontSize = 11.sp
-                )
+                Text("Kiraan sejam berdasarkan tempoh tawaran sahaja; belum mengambil kira perjalanan ke pickup, menunggu, tol atau kos operasi.", color = Color(0xFF8292A8), fontSize = 11.sp)
             }
         }
 
@@ -188,7 +242,7 @@ private fun RiderHome() {
                 }
             }
         }
-        Text("4riders Next • Scanner engine 0.3.0", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Text("4riders Next • Scanner engine 0.4.0", color = Color(0xFF58677C), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }
 
